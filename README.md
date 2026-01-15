@@ -19,6 +19,12 @@ ntStat is a toolkit that uses Bloom filters to track both *k*-mer count and dept
 
 # Installation
 
+## From Bioconda (recommended)
+
+```
+conda install bioconda::ntstat
+```
+
 ## From source
 
 - Make sure all [dependencies](#dependencies) are available in the setup environment.
