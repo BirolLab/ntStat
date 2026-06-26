@@ -1,3 +1,5 @@
+![ntStat logo](logo.png?raw=true)
+
 ntStat is a toolkit that uses Bloom filters to track both *k*-mer count and depth information for use in downstream applications. ntStat also models the *k*-mer count histogram using a mixture model, and infers valuable insights about the genome (size and heterozygosity), sequencing data (ratio of non-erroneous *k*-mers), and individual *k*-mers (probability of a *k*-mer being erroneous, given its count), *de novo*.
 
 **Contents**
