@@ -113,7 +113,7 @@ class Model:
         d = y[hist.first_minima :].argmax() + hist.first_minima + 1
         for i in range(num_components):
             bounds.extend([(0, 1), (hist.first_minima, d * 3), (0, 1)])
-            x0.extend([0.5, (i + 1) * d // 2, 0.5])
+            x0.extend([0.5, max(hist.first_minima, (i + 1) * d // 2), 0.5])
         history = []
         max_iters = config.get("maxiter", 2000)
         callback = lambda intermediate_result: log_iteration(
