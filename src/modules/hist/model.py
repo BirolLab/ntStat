@@ -1,14 +1,18 @@
 import numpy as np
+import scipy.ndimage
 import scipy.optimize
 import scipy.special
 import scipy.stats
 
-err_dists = [(lambda p: scipy.stats.gamma(*p), 3), (lambda p: scipy.stats.expon(*p), 2)]
+err_dists = [
+    (lambda p: scipy.stats.gamma(p[1], loc=p[0], scale=p[2]), 3),
+    (lambda p: scipy.stats.expon(loc=p[0], scale=p[2]), 3),
+]
 
 genomic_dists = [
-    (lambda p: scipy.stats.nbinom(*p), 2),
-    (lambda p: scipy.stats.norm(*p), 2),
-    (lambda p: scipy.stats.skewnorm(p[1], p[0]), 2),
+    (lambda p: scipy.stats.nbinom(p[0] * p[1] / (1 - p[1] + 1e-9), p[1] + 1e-9), 2),
+    (lambda p: scipy.stats.norm(loc=p[0], scale=p[0] * p[1] + 1e-9), 2),
+    (lambda p: scipy.stats.skewnorm(5, loc=p[0], scale=p[0] * p[1] + 1e-9), 2),
 ]
 
 
@@ -31,26 +35,25 @@ def update_components(params):
 def score(x, components):
     scores = np.empty(shape=(len(components), x.shape[0]))
     for i, (w, rv) in enumerate(components):
-        y = rv.pdf(x) if isinstance(rv.dist, scipy.stats.rv_continuous) else rv.pmf(x)
+        if isinstance(rv.dist, scipy.stats.rv_continuous):
+            y = rv.cdf(x + 0.5) - rv.cdf(x - 0.5)
+        else:
+            y = rv.pmf(x)
         scores[i, :] = w * y
     return scores
 
 
 def loss(params, x, y):
     fx = score(x, update_components(params)).sum(axis=0)
-    return np.abs(y - fx).sum()
+    return np.abs(np.sqrt(y) - np.sqrt(fx)).sum()
 
 
-def log_iteration(
-    intermediate_result: scipy.optimize.OptimizeResult,
-    history: list,
-):
-    components = update_components(intermediate_result.x)
-    history.append((components, intermediate_result.fun))
+def log_iteration(result: scipy.optimize.OptimizeResult, history: list):
+    components = update_components(result.x)
+    history.append((components, result.fun))
 
 
 class Model:
-
     def __init__(self) -> None:
         self.__components = []
 
@@ -90,7 +93,7 @@ class Model:
 
     def get_responsibilities(self, x):
         scores = self.score_components(x)
-        return np.nan_to_num(scores / scores.sum(axis=0))
+        return np.nan_to_num(scores / (scores.sum(axis=0) + 1e-9))
 
     def get_weak_robust_crossover(self, x):
         scores = self.score_components(x)
@@ -99,23 +102,36 @@ class Model:
         i = np.where(y2 >= y1)[0]
         return x[i[0]] if i.shape[0] > 0 else 0
 
-    def fit(self, hist, num_components=2, config=dict()):
+    def fit(self, hist, num_components=2, config=None):
+        config = {} if config is None else config
         x, y = np.arange(1, hist.max_count + 1), hist.as_distribution()
         bounds = [
             (0, len(err_dists) - 1),
             (0, len(genomic_dists) - 1),
             (0, 1),
-            (0, 1),
-            (0, 1),
-            (0, 1),
+            (0, 0.999),
+            (0.01, 1.0),
+            (0.01, hist.max_count),
         ]
-        x0 = [0, 0, 1, 0.5, 0.9, 0.9]
-        d = y[hist.first_minima :].argmax() + hist.first_minima + 1
+        x0 = [0, 0, 1, 0.9, 0.5, 0.5]
+        smoothed_y = scipy.ndimage.gaussian_filter1d(y, sigma=10)
+        peaks, _ = scipy.signal.find_peaks(smoothed_y[hist.first_minima :])
+        if len(peaks) > 0:
+            valid_peaks = peaks + hist.first_minima
+            d = valid_peaks[smoothed_y[valid_peaks].argmax()] + 1
+        else:
+            d = smoothed_y[hist.first_minima :].argmax() + hist.first_minima + 1
         for i in range(num_components):
-            bounds.extend([(0, 1), (hist.first_minima, d * 3), (0, 1)])
-            x0.extend([0.5, max(hist.first_minima, (i + 1) * d // 2), 0.5])
+            if i == 0:
+                b_mean = (d * 0.25, d * 0.75)
+                x_mean = d * 0.5
+            else:
+                b_mean = (d * 0.8, d * 3)
+                x_mean = d * (i + 1) / 2
+            bounds.extend([(0, 1), b_mean, (0.1, 0.999)])
+            x_mean_safe = max(b_mean[0] + 1e-5, min(x_mean, b_mean[1] - 1e-5))
+            x0.extend([0.5, x_mean_safe, 0.5])
         history = []
-        max_iters = config.get("maxiter", 2000)
         callback = lambda intermediate_result: log_iteration(
             intermediate_result,
             history,
@@ -131,7 +147,7 @@ class Model:
             seed=config.get("seed", 42),
             updating="deferred",
             workers=config.get("workers", -1),
-            maxiter=max_iters,
+            maxiter=config.get("maxiter", 5000),
             callback=callback,
             mutation=config.get("mutation", (0.5, 1.0)),
             recombination=config.get("recombination", 0.8),
@@ -139,6 +155,6 @@ class Model:
             polish=True,
         )
         components = update_components(opt.x)
-        sorted_nbinoms = sorted(components[1:], key=lambda c: c[1].mean())
-        self.__components = [components[0]] + list(sorted_nbinoms)
+        sorted_components = sorted(components[1:], key=lambda c: c[1].mean())
+        self.__components = [components[0]] + list(sorted_components)
         return opt.nit, loss(opt.x, x, y), history

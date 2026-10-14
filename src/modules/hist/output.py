@@ -133,7 +133,6 @@ def save_fit_animation(
     axs[1].set_xlim((1, len(history) + 1))
     errors = [err for _, err in history]
     axs[1].set_ylim(min(errors) * 0.9, max(errors) + min(errors) * 0.9)
-    axs[1].set_yscale("log")
     axs[1].plot([], [])
     (err_plot,) = axs[1].plot([], [])
     error_history = []
