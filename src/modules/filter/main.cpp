@@ -59,7 +59,8 @@ run(std::vector<std::string> argv)
     excludes_size = get_bf_size(args.get()->histogram[1] - num_elements, cascade_fpr, num_hashes);
   }
 
-  const auto num_bf_elements = args.get()->cmin > 1 ? args.get()->histogram[1] : 0;
+  uint64_t num_bf_elements = args.get()->cmin > 1 ? args.get()->histogram[1] : 0;
+  num_bf_elements *= std::max(1UL, args.get()->seeds.size());
   const auto bf_size = get_bf_size(num_bf_elements, cascade_fpr, num_hashes);
 
   uint64_t num_cbf_elements = 0;
@@ -69,6 +70,7 @@ run(std::vector<std::string> argv)
     num_cbf_elements = args.get()->histogram[1] - args.get()->histogram[2];
     num_cbf_elements += args.get()->histogram[1] * cascade_fpr;
   }
+  num_cbf_elements *= std::max(1UL, args.get()->seeds.size());
   const auto cbf_size = get_bf_size(num_cbf_elements, cascade_fpr, num_hashes);
 
   size_t ram_usage = bf_size + cbf_size + out_size + excludes_size;

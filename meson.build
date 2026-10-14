@@ -1,7 +1,7 @@
 project(
     'ntStat',
     'cpp',
-    version: '1.1',
+    version: '1.1.1',
     license: 'GPL-3',
     default_options: [
         'cpp_std=c++17',
